@@ -2,6 +2,8 @@ package main
 
 import (
 	"database/sql"
+	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -17,37 +19,18 @@ type apiConfig struct {
 	db             *database.Queries
 	platform       string
 	jwtSecret      string
+	polkaKey       string
 }
 
 func main() {
 	const filepathRoot = "."
 	const port = "8080"
 
-	godotenv.Load()
-	dbURL := os.Getenv("DB_URL")
-	if dbURL == "" {
-		log.Fatal("DB_URL must be set")
-	}
-	platform := os.Getenv("PLATFORM")
-	if platform == "" {
-		log.Fatal("PLATFORM must be set")
-	}
-	jwtSecret := os.Getenv("JWT_SECRET")
-	if jwtSecret == "" {
-		log.Fatal("JWT_SECRET environment variable is not set")
-	}
+	apiCfg := apiConfig{}
 
-	dbConn, err := sql.Open("postgres", dbURL)
+	err := setUpCfg(&apiCfg)
 	if err != nil {
-		log.Fatalf("Error opening database: %s", err)
-	}
-	dbQueries := database.New(dbConn)
-
-	apiCfg := apiConfig{
-		fileserverHits: atomic.Int32{},
-		db:             dbQueries,
-		platform:       platform,
-		jwtSecret:      jwtSecret,
+		log.Fatal(err)
 	}
 
 	mux := http.NewServeMux()
@@ -80,4 +63,37 @@ func main() {
 
 	log.Printf("Serving on port: %s\n", port)
 	log.Fatal(srv.ListenAndServe())
+}
+
+func setUpCfg(apiCfg *apiConfig) error {
+	godotenv.Load()
+	dbURL := os.Getenv("DB_URL")
+	if dbURL == "" {
+		return errors.New("DB_URL must be set")
+	}
+	dbConn, err := sql.Open("postgres", dbURL)
+	if err != nil {
+		return fmt.Errorf("error opening database: %s", err)
+	}
+	dbQueries := database.New(dbConn)
+
+	platform := os.Getenv("PLATFORM")
+	if platform == "" {
+		return errors.New("PLATFORM must be set")
+	}
+	jwtSecret := os.Getenv("JWT_SECRET")
+	if jwtSecret == "" {
+		return errors.New("JWT_SECRET environment variable is not set")
+	}
+	polkaKey := os.Getenv("POLKA_KEY")
+	if polkaKey == "" {
+		return errors.New("POLKA_KEY environment variable is not set")
+	}
+	*apiCfg = apiConfig{
+		db:        dbQueries,
+		platform:  platform,
+		jwtSecret: jwtSecret,
+		polkaKey:  polkaKey,
+	}
+	return nil
 }
